@@ -15,7 +15,7 @@ def check_cgdb():
         out = output.get(key)
         exp = expected.get(key)
         if exp == out:
-            grade += 20/9
+            grade += 30/9
         else:
             wrong.append('q'+key)
     return (round(grade), utils.passed() if len(wrong) == 0 else utils.incomplete(','.join(wrong)))
@@ -34,8 +34,8 @@ def check_equal():
         expected = expected.strip()
         grade = 0
         if expected == output:
-            grade += 40
-        return (grade, utils.passed() if grade == 40 else utils.failed('failed some tests...'), '')
+            grade += 30
+        return (grade, utils.passed() if grade == 30 else utils.failed('failed some tests...'), '')
     except subprocess.TimeoutExpired:
         return (0, utils.failed('TIMEOUT'), '')
     except Exception:
