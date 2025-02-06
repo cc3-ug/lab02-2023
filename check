@@ -1,6 +1,6 @@
-cp grading/Makefile .
-cp grading/*.c .
 make clean
+make autograder-clean
+cp grading/*.c .
 
 {
   title() {

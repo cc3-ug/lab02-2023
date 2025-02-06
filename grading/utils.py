@@ -1,49 +1,44 @@
 import os
 import re
 import json
-import boto3
 import base64
 import shutil
 import hashlib
 import zipfile
-import paramiko
 import tempfile
 import pycparser
 from os import environ
 from glob import glob
-from Crypto import Random
 from subprocess import run
 from subprocess import PIPE
 from tabulate import tabulate
-from Crypto.Cipher import AES
 from distutils.dir_util import copy_tree
 
 
-# encrypt a string
-def encrypt(raw):
-    def pad(s):
-        return s + (16 - len(s) % 16) * chr(16 - len(s) % 16)
-    rawkey = environ['AUTOGRADERS_KEY']
-    key = hashlib.sha256(rawkey.encode()).digest()
-    raw = pad(raw)
-    iv = Random.new().read(AES.block_size)
-    cipher = AES.new(key, AES.MODE_CBC, iv)
-    return base64.b64encode(iv + cipher.encrypt(raw)).decode()
+# builds program file string
+def get_ex(ch, ex):
+    return f"./ch{ch}/ex-{ch}.{ex}.c"
 
 
-# decrypt an encrypted string
-def decrypt(enc):
-    def unpad(s):
-        if (type(s[-1]) == int):
-            return s[0: -s[-1]]
-        return s[0: -ord(s[-1])]
-    enc = base64.b64decode(enc)
-    iv = enc[:16]
-    rawkey = environ['AUTOGRADERS_KEY']
-    key = hashlib.sha256(rawkey.encode()).digest()
-    cipher = AES.new(key, AES.MODE_CBC, iv)
-    return unpad(cipher.decrypt(enc[16:])).decode()
+# builds program test file string
+def get_in(ch, ex):
+    if (ch == 1):
+        if (ex == 9):
+            return "./ch1/spaces.test"
+        elif (ex == 13 or ex == 14):
+            return "./ch1/words.test"
+        elif (ex == 17):
+            return "./ch1/long.test"
+        elif (ex == 20):
+            return "./ch1/tabs.test"
+        else:
+            return "./ch1/input.test"
+    else:
+        return "placeholder.test"
 
+# builds expected output file string
+def get_out(ch, ex):
+    return f"./ch{ch}/expected-{ch}.{ex}"
 
 # reads a file
 def read(filename):
@@ -154,10 +149,64 @@ def expected_files(files, dir='.'):
 def execute(cmd=[], shell=False, dir='.', input=None, encoding='ascii', timeout=5):
     return run(cmd, shell=shell, stdout=PIPE, stderr=PIPE, input=input, cwd=dir, timeout=timeout)
 
-
 # makes a target
 def make(target=''):
     return execute(cmd=['make', target])
+
+
+# compile a target
+def compile(target=''):
+    return execute(cmd=['gcc', '-std=c99', target])
+
+# run a file
+def run_program(command):
+    return run(command, shell=True, stdout=PIPE, stderr=PIPE, cwd='.', timeout=10)
+
+
+# passed message
+def passed(*args):
+    if len(args) > 0:
+        return 'passed: ' + args[0]
+    return 'passed'
+
+
+# failed message
+def failed(*args):
+    if len(args) > 0:
+        return 'failed: ' + args[0]
+    return 'failed'
+
+
+# incomplete message
+def incomplete(*args):
+    if len(args) > 0:
+        return 'incomplete: ' + args[0]
+    return 'incomplete'
+
+
+# creates a compilation error msg
+def create_error(filename, msg):
+    if msg != '':
+        return '[%s]\n\n%s\n' % (filename, msg)
+    return ''
+
+
+# creates a pretty result report
+def report(table):
+    return tabulate(table, headers=['Exercise', 'Grade', 'Message'])
+
+
+# writes autograder result (lab)
+def write_result(grade, msg):
+    write_json({'grade': grade, 'output': msg}, 'output.json')
+
+
+# finds a specific function in the ast
+def find_func(ast, name):
+    for f in ast.ext:
+        if type(f) == pycparser.c_ast.FuncDef and f.decl.name == name:
+            return f
+    return None
 
 
 # parses a form
@@ -212,93 +261,3 @@ def parse_c_raw(filename):
     text = task.stdout.decode().strip()
     parser = pycparser.c_parser.CParser()
     return parser.parse(text)
-
-
-# passed message
-def passed(*args):
-    if len(args) > 0:
-        return 'passed: ' + args[0]
-    return 'passed'
-
-
-# failed message
-def failed(*args):
-    if len(args) > 0:
-        return 'failed: ' + args[0]
-    return 'failed'
-
-
-# incomplete message
-def incomplete(*args):
-    if len(args) > 0:
-        return 'incomplete: ' + args[0]
-    return 'incomplete'
-
-
-# creates a compilation error msg
-def create_error(filename, msg):
-    if msg != '':
-        return '[%s]\n\n%s\n' % (filename, msg)
-    return ''
-
-
-# creates a pretty result report
-def report(table):
-    return tabulate(table, headers=['Exercise', 'Grade', 'Message'])
-
-
-# writes autograder result
-def write_result(grade, msg):
-    write_json({'grade': grade, 'output': msg}, 'output.json')
-
-
-# finds a specific function in the ast
-def find_func(ast, name):
-    for f in ast.ext:
-        if type(f) == pycparser.c_ast.FuncDef and f.decl.name == name:
-            return f
-    return None
-
-
-class AWSTask:
-
-    def __init__(self, name, instance='c5.2xlarge', AMI='ami-0e262d4de9c0b73fd', key='cc3'):
-        ec2 = boto3.resource('ec2')
-        self.instance = ec2.create_instances(
-            ImageId=AMI,
-            MaxCount=1,
-            MinCount=1,
-            InstanceType=instance,
-            SecurityGroupIds=['sg-00b6ec171be0d43f7'],
-            KeyName=key,
-            TagSpecifications=[
-                {
-                    'ResourceType': 'instance',
-                    'Tags': [
-                        {
-                            'Key': 'Name',
-                            'Value': name
-                        },
-                    ]
-                },
-            ],
-        )[0]
-        self.instance.wait_until_running()
-        self.instance.reload()
-        self.instance.wait_until_running()
-        self.key = key
-        self.ipv4 = self.instance.public_ip_address
-
-    def connect(self):
-        key = paramiko.RSAKey.from_private_key_file(self.key + '.pem')
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        client.connect(hostname=self.ipv4, username='ubuntu', pkey=key)
-        self.client = client
-
-    def run(self, cmd, timeout=30):
-        stdin, stdout, stderr = self.client.exec_command(cmd, timeout=timeout)
-        return (stdout.read().decode(), stderr.read().decode())
-
-    def terminate(self):
-        self.instance.terminate()
