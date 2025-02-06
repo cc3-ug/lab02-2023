@@ -17,3 +17,4 @@ cp grading/*.c .
   title
   python3 grading/check.py
 }
+

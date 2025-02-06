@@ -87,11 +87,14 @@ def lab2_c_gdb():
         print(report)
         if errors != '':
             report += '\n\nMore Info:\n\n' + errors
+
+        task = utils.make(target='clean')
+        task = utils.make(target='autograder-clean')
         return utils.write_result(grade, report)
     else:
         utils.write_result(0, 'missing files: %s' % (','.join(not_found)))
-    
-    task = utils.make(target='autograder-clean')
+        task = utils.make(target='clean')
+        task = utils.make(target='autograder-clean')
 
 if __name__ == '__main__':
     resource.setrlimit(resource.RLIMIT_AS, (BYTES, BYTES))
