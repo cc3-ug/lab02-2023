@@ -21,7 +21,7 @@ jobs:
           python-version: 3.7
 
       - name: Install pycparser
-        run: pip install tabulate psutil
+        run: pip install tabulate psutil pycparser
 
       - name: Run tests
         run: ./check
